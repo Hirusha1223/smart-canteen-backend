@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 // Route Imports 
 import menuRoutes from './routes/menuRoutes.js';
 import authRoutes from './routes/authRoutes.js'; 
-import orderRoutes from './routes/orderRoutes.js'; //  Imported orderRoutes with strict .js extension
+import orderRoutes from './routes/orderRoutes.js'; // Imported orderRoutes with strict .js extension
 
 // Config Environment Variables
 dotenv.config();
@@ -21,10 +21,14 @@ const PORT = process.env.PORT || 5000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure uploads folder exists
+// Ensure uploads folder exists (Handled safely for Vercel/Serverless read-only environments)
 const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (err) {
+  console.log('Uploads directory creation skipped or handled by serverless environment.');
 }
 
 // Type Assertion 
@@ -56,16 +60,21 @@ db.on('disconnected', () => console.log('MongoDB connection disconnected.'));
 // API Endpoint Links
 app.use('/api/menu', menuRoutes);
 app.use('/api/auth', authRoutes); 
-app.use('/api/orders', orderRoutes); //  Registered the orders route endpoint to  404 Axios Error
+app.use('/api/orders', orderRoutes); // Registered the orders route endpoint to 404 Axios Error
 
 // Base Test Route
 app.get('/', (req: Request, res: Response) => {
   res.json({ message: "Smart Canteen Backend Server API is running successfully!" });
 });
 
-// Server Listen
-app.listen(PORT, () => {
-  console.log(`\n==============================================`);
-  console.log(` Server is live and running on port: ${PORT}`);
-  console.log(`==============================================\n`);
-});
+// Server Listen (Handled conditionally for local development vs Vercel deployment)
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`\n==============================================`);
+    console.log(` Server is live and running on port: ${PORT}`);
+    console.log(`==============================================\n`);
+  });
+}
+
+// Export app instance explicitly for Vercel Serverless deployment
+export default app;
