@@ -60,7 +60,7 @@ db.on('disconnected', () => console.log('MongoDB connection disconnected.'));
 // API Endpoint Links
 app.use('/api/menu', menuRoutes);
 app.use('/api/auth', authRoutes); 
-app.use('/api/orders', orderRoutes); // Registered the orders route endpoint to 404 Axios Error
+app.use('/api/orders', orderRoutes); //  route endpoint to 404 Axios Error
 
 // Base Test Route
 app.get('/', (req: Request, res: Response) => {

@@ -1,50 +1,53 @@
 import express, { Request, Response, Router } from 'express';
 import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import Menu from '../models/Menu.js'; 
 import { protect, authorizeAdmin, AuthenticatedRequest } from '../middleware/authMiddleware.js';
 
 const router: Router = express.Router();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Cloudinary Configuration using environment variables
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
-// Multer Disk Storage Configuration
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads'));
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
+// Cloudinary Storage Setup for Multer (TypeScript Type Assertion)
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'smart_canteen_items',
+    allowed_formats: ['jpg', 'jpeg', 'png'],
+    public_id: (req: Request, file: Express.Multer.File) => 'image-' + Date.now()
+  } as any
 });
 
 // File filter to accept only images
-const fileFilter = (req: any, file: any, cb: any) => {
+const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed!'), false);
+    cb(new Error('Only image files are allowed!'));
   }
 };
 
 const upload = multer({ storage, fileFilter });
 
-// 1. Seed Menu Items 
+// 1. Seed Menu Items (Using online fallback images instead of non-existent local files)
 router.post('/seed', async (req: Request, res: Response): Promise<void> => {
   try {
     await Menu.deleteMany({});
 
     const sampleItems = [
-      { name: "Chicken Rice and Curry", price: 170.00, category: "Lunch", image: "uploads/placeholder.jpg" },
-      { name: "Fish Rice and Curry", price: 120.00, category: "Lunch", image: "uploads/placeholder.jpg" },
-      { name: "Tea", price: 50.00, category: "Drinks", image: "uploads/placeholder.jpg" },
-      { name: "Plainty", price: 10.00, category: "Drinks", image: "uploads/placeholder.jpg" },
-      { name: "Cake One Slice", price: 60.00, category: "Snacks", image: "uploads/placeholder.jpg" },
-      { name: "String Hoppers Set", price: 100.00, category: "Breakfast", image: "uploads/placeholder.jpg" },
-      { name: "Fried Rice Dinner", price: 250.00, category: "Dinner", image: "uploads/placeholder.jpg" }
+      { name: "Chicken Rice and Curry", price: 170.00, category: "Lunch", image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c" },
+      { name: "Fish Rice and Curry", price: 120.00, category: "Lunch", image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c" },
+      { name: "Tea", price: 50.00, category: "Drinks", image: "https://images.unsplash.com/photo-1544787219-7f47ccb76574" },
+      { name: "Plainty", price: 10.00, category: "Drinks", image: "https://images.unsplash.com/photo-1544787219-7f47ccb76574" },
+      { name: "Cake One Slice", price: 60.00, category: "Snacks", image: "https://images.unsplash.com/photo-1551024601-bec78aea704b" },
+      { name: "String Hoppers Set", price: 100.00, category: "Breakfast", image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c" },
+      { name: "Fried Rice Dinner", price: 250.00, category: "Dinner", image: "https://images.unsplash.com/photo-1512058564366-18510be2db19" }
     ];
 
     const createdItems = await Menu.insertMany(sampleItems);
@@ -67,7 +70,6 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 // 3. Add New Menu Item with Image Upload Admin Only
 router.post('/', upload.single('image'), protect, authorizeAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    // Destructured implicit category payload property from multipart request body stream
     const { name, price, category } = req.body;
 
     if (!name || !price || !category) {
@@ -80,13 +82,14 @@ router.post('/', upload.single('image'), protect, authorizeAdmin, async (req: Au
       return;
     }
 
-    const imagePath = `uploads/${req.file.filename}`;
+    // In Cloudinary setup, req.file.path holds the full live secure CDN URL string
+    const imageLink = req.file.path;
 
     const newItem = new Menu({
       name,
       price: Number(price),
-      category, //  Assigned directly to satisfy backend database validation rules
-      image: imagePath,
+      category, 
+      image: imageLink,
       isAvailable: true
     });
 
@@ -97,17 +100,16 @@ router.post('/', upload.single('image'), protect, authorizeAdmin, async (req: Au
   }
 });
 
-// 4. update menu item Details and Availability Admin Only
+// 4. Update menu item Details and Availability Admin Only
 router.patch('/:id', protect, authorizeAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    //  Added category to Added to fix a 404 error during layout loading.
     const { name, price, category, isAvailable } = req.body; 
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (price !== undefined) updateData.price = Number(price);
-    if (category !== undefined) updateData.category = category; //  modified category updates dynamically
+    if (category !== undefined) updateData.category = category; 
     if (isAvailable !== undefined && typeof isAvailable === 'boolean') updateData.isAvailable = isAvailable;
 
     const updatedItem = await Menu.findByIdAndUpdate(
